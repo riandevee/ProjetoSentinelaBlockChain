@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinela Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-shield-halved"></i> Sentinela <span>Node.js</span></h1>
+            <p>Monitoramento de Integridade em Tempo Real</p>
+        </header>
+
+        <section class="stats">
+            <div class="stat-card">
+                <span class="label">Status do Sistema</span>
+                <span class="value online">Ativo</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">Blocos Minerados</span>
+                <span id="block-count" class="value">0</span>
+            </div>
+        </section>
+
+        <div style="text-align: center; margin-bottom: 20px;">
+            <button id="btn-download" class="stat-card" style="cursor:pointer; width: auto; padding: 10px 30px;">
+                <i class="fas fa-file-download"></i> Baixar Log de Auditoria
+            </button>
+        </div>
+
+        <main id="blockchain-flow">
+            <p style="text-align: center; color: #8b949e;">Aguardando sincronização com o banco de dados...</p>
+        </main>
+    </div>
+
+    <script>
+        // Função para download do Log
+        document.getElementById('btn-download').addEventListener('click', async () => {
+            try {
+                const resposta = await fetch('/api/blockchain');
+                const dados = await resposta.json();
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dados, null, 2));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", "relatorio_sentinela.json");
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+            } catch (err) {
+                console.error("Erro ao baixar log:", err);
+            }
+        });
+
+        // Função principal para carregar os blocos
+        async function carregarDashboard() {
+            try {
+                const resposta = await fetch('/api/blockchain');
+                const dados = await resposta.json();
+                const fluxo = document.getElementById('blockchain-flow');
+                const contador = document.getElementById('block-count');
+                
+                contador.innerText = dados.length;
+                fluxo.innerHTML = ''; 
+
+                if (dados.length === 0) {
+                    fluxo.innerHTML = '<p style="text-align: center; color: #8b949e;">Nenhum bloco minerado ainda.</p>';
+                    return;
+                }
+
+                // Inverte para mostrar o mais recente no topo
+                const dadosInvertidos = [...dados].reverse();
+
+                dadosInvertidos.forEach((bloco, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'block';
+                    
+                    // Lógica de Validação Visual
+                    // Verifica se o hashAnterior deste bloco bate com o hash do bloco que veio antes dele no tempo
+                    // Como invertemos o array para exibição, o "bloco anterior no tempo" é o index + 1
+                    let statusHtml = '<div class="status-indicator valid">Íntegro</div>';
+                    
+                    if (index < dadosInvertidos.length - 1) {
+                        const blocoAnteriorNoTempo = dadosInvertidos[index + 1];
+                        if (bloco.hashAnterior !== blocoAnteriorNoTempo.hash) {
+                            div.classList.add('alert');
+                            statusHtml = '<div class="status-indicator invalid">Violação Detectada</div>';
+                        }
+                    }
+
+                    div.innerHTML = `
+                        <div class="block-header">
+                            <span class="index">Bloco #${bloco.index} ${bloco.index === 0 ? '(Gênesis)' : ''}</span>
+                            <span class="time">${bloco.data}</span>
+                        </div>
+                        <div class="block-body">
+                            <p><strong>Hash:</strong> <span class="hash">${bloco.hash}</span></p>
+                            <p><strong>Anterior:</strong> <span class="hash-prev">${bloco.hashAnterior}</span></p>
+                        </div>
+                        ${statusHtml}
+                    `;
+                    fluxo.appendChild(div);
+                    
+                    // Adiciona o ícone de elo entre os blocos
+                    if (index < dadosInvertidos.length - 1) {
+                        const link = document.createElement('div');
+                        link.className = 'connector';
+                        link.innerHTML = '<i class="fas fa-link"></i>';
+                        fluxo.appendChild(link);
+                    }
+                });
+            } catch (err) {
+                console.error("Erro ao carregar dashboard:", err);
+            }
+        }
+
+        // Atualização automática
+        setInterval(carregarDashboard, 2000);
+        carregarDashboard();
+    </script>
+</body>
+</html>
